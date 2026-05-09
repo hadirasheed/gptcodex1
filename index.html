@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knob Card Snap Demo</title>
+    <style>
+      :root {
+        --bg: #05070f;
+        --panel: #0c1224;
+        --text: #f5f7ff;
+        --muted: #95a3ca;
+        --accent: #7aa4ff;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background: radial-gradient(circle at top, #182649 0%, var(--bg) 52%);
+        color: var(--text);
+        display: flex;
+        justify-content: center;
+      }
+
+      .app {
+        width: min(430px, 100vw);
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: 52vh 48vh;
+      }
+
+      .cards-panel {
+        padding: 1.25rem 1rem 0.5rem;
+      }
+
+      .title { margin: 0 0 0.25rem; font-size: 1.15rem; letter-spacing: 0.015em; }
+      .hint { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
+
+      .viewport {
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid rgba(255,255,255,0.08);
+        height: calc(100% - 3rem);
+        background: linear-gradient(175deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));
+      }
+
+      .track {
+        display: flex;
+        height: 100%;
+        will-change: transform;
+      }
+
+      .card {
+        width: 100%;
+        flex: 0 0 100%;
+        padding: 1rem;
+        display: grid;
+        gap: 0.65rem;
+        align-content: center;
+      }
+
+      .card h2 { margin: 0; font-size: 1.3rem; }
+      .card p { margin: 0; color: #d2dbf8; line-height: 1.4; }
+      .chip {
+        width: fit-content;
+        padding: 0.4rem 0.6rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.12);
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+      }
+
+      .knob-panel {
+        display: grid;
+        place-items: center;
+        padding-bottom: 1.25rem;
+      }
+
+      .knob-wrap {
+        width: min(72vw, 300px);
+        aspect-ratio: 1/1;
+        border-radius: 50%;
+        background: radial-gradient(circle at 32% 28%, #3a4e7d, #1b233f 58%, #0f1631 100%);
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow: inset 0 0 25px rgba(255,255,255,0.08), 0 20px 45px rgba(0,0,0,0.45);
+        position: relative;
+        touch-action: none;
+      }
+
+      .knob {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        position: relative;
+      }
+
+      .indicator {
+        position: absolute;
+        left: 50%;
+        top: 10%;
+        width: 10px;
+        height: 34px;
+        border-radius: 8px;
+        background: linear-gradient(#fbfdff, #b9cfff);
+        transform: translateX(-50%);
+        box-shadow: 0 0 12px rgba(184, 206, 255, 0.85);
+      }
+
+      .ticks {
+        position: absolute;
+        inset: 8%;
+        border-radius: 50%;
+        opacity: 0.55;
+        background: conic-gradient(from 0deg, rgba(255,255,255,0.2) 0deg 6deg, transparent 6deg 18deg);
+        mask: radial-gradient(circle at center, transparent 60%, #000 61%);
+      }
+
+      .step-label {
+        margin-top: 0.8rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="cards-panel">
+        <h1 class="title">Control cards with the knob</h1>
+        <p class="hint">Turn left/right. The knob and cards snap together elastically.</p>
+        <div class="viewport">
+          <div class="track" id="cardTrack">
+            <article class="card"><span class="chip">CARD 1</span><h2>Audio Scene</h2><p>Dial the mood preset for your room with tactile control.</p></article>
+            <article class="card"><span class="chip">CARD 2</span><h2>Climate Focus</h2><p>Snap to the next profile to balance comfort and energy use.</p></article>
+            <article class="card"><span class="chip">CARD 3</span><h2>Lighting Grid</h2><p>Each click rotates into a new arrangement of brightness zones.</p></article>
+            <article class="card"><span class="chip">CARD 4</span><h2>Drive Assist</h2><p>Choose one assist layer at a time with a satisfying detent feel.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="knob-panel">
+        <div class="knob-wrap" id="knobWrap">
+          <div class="ticks"></div>
+          <div class="knob" id="knob">
+            <div class="indicator"></div>
+          </div>
+        </div>
+        <div class="step-label" id="stepLabel">Position 1 / 4</div>
+      </section>
+    </main>
+
+    <script>
+      const knobWrap = document.getElementById('knobWrap');
+      const knob = document.getElementById('knob');
+      const cardTrack = document.getElementById('cardTrack');
+      const stepLabel = document.getElementById('stepLabel');
+
+      const totalCards = cardTrack.children.length;
+      const stepAngle = 24;
+      const maxStep = totalCards - 1;
+
+      let currentStep = 0;
+      let targetAngle = 0;
+      let visualAngle = 0;
+      let velocity = 0;
+      let dragging = false;
+      let dragStartAngle = 0;
+      let stepAtDragStart = 0;
+
+      function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+
+      function getPointerAngle(event) {
+        const rect = knobWrap.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const x = event.clientX - cx;
+        const y = event.clientY - cy;
+        return Math.atan2(y, x) * 180 / Math.PI;
+      }
+
+      function applyState() {
+        knob.style.transform = `rotate(${visualAngle}deg)`;
+        const x = -currentStep * 100;
+        cardTrack.style.transform = `translate3d(${x}%, 0, 0)`;
+        stepLabel.textContent = `Position ${currentStep + 1} / ${totalCards}`;
+      }
+
+      function animate() {
+        const spring = 0.13;
+        const damping = 0.77;
+        const delta = targetAngle - visualAngle;
+        velocity += delta * spring;
+        velocity *= damping;
+        visualAngle += velocity;
+
+        if (Math.abs(delta) < 0.02 && Math.abs(velocity) < 0.02) {
+          visualAngle = targetAngle;
+          velocity = 0;
+        }
+
+        applyState();
+        requestAnimationFrame(animate);
+      }
+
+      function setStep(step) {
+        const nextStep = clamp(step, 0, maxStep);
+        if (nextStep !== currentStep) {
+          currentStep = nextStep;
+        }
+        targetAngle = currentStep * stepAngle;
+      }
+
+      knobWrap.addEventListener('pointerdown', (event) => {
+        dragging = true;
+        knobWrap.setPointerCapture(event.pointerId);
+        dragStartAngle = getPointerAngle(event);
+        stepAtDragStart = currentStep;
+      });
+
+      knobWrap.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        const angleNow = getPointerAngle(event);
+        let delta = angleNow - dragStartAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+
+        const stepDelta = Math.round(delta / 18);
+        setStep(stepAtDragStart + stepDelta);
+      });
+
+      function endDrag(event) {
+        if (!dragging) return;
+        dragging = false;
+        if (event.pointerId !== undefined) knobWrap.releasePointerCapture(event.pointerId);
+        targetAngle = currentStep * stepAngle;
+      }
+
+      knobWrap.addEventListener('pointerup', endDrag);
+      knobWrap.addEventListener('pointercancel', endDrag);
+      knobWrap.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        setStep(currentStep + Math.sign(event.deltaY));
+      }, { passive: false });
+
+      applyState();
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
